@@ -176,6 +176,20 @@ body {
   text-align: left;
 }
 
+.analysis-error {
+  margin: 0;
+  max-width: 520px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #fff1f0;
+  border: 1px solid #ffccc7;
+  color: #a8071a;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: left;
+  word-break: break-word;
+}
+
 .submit-note {
   margin: 0 0 16px;
 }

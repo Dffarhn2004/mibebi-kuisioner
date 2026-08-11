@@ -17,6 +17,7 @@ import {
   CheckCircleOutlined,
   DownloadOutlined,
   FormOutlined,
+  ReloadOutlined,
   ShopOutlined,
 } from "@ant-design/icons";
 import {
@@ -58,8 +59,10 @@ export default function HealthCheckForm() {
   const [form] = Form.useForm();
   const [answers, setAnswers] = useState({});
   const [latestResult, setLatestResult] = useState(null);
+  const [analyzeError, setAnalyzeError] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
   const answeredCount = useMemo(() => countAnswered(answers), [answers]);
@@ -93,7 +96,6 @@ export default function HealthCheckForm() {
         yesCount: latestResult.yes_count,
         totalQuestions: latestResult.total_questions,
         analysis: latestResult.analysis,
-        analysisText: latestResult.analysis_text,
         createdAt: latestResult.analyzed_at || latestResult.created_at,
       });
       message.success("PDF berhasil diunduh.");
@@ -101,6 +103,37 @@ export default function HealthCheckForm() {
       message.error(error.message || "Gagal membuat PDF.");
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const handleReanalyze = async () => {
+    if (!latestResult?.id) {
+      message.error("ID submission tidak ditemukan.");
+      return;
+    }
+
+    setReanalyzing(true);
+    try {
+      const response = await fetch(
+        `/api/submissions/${latestResult.id}/analyze`,
+        { method: "POST" },
+      );
+      const result = await response.json();
+
+      if (!response.ok || !result.success || !result.analyzed) {
+        const errMsg =
+          result.analyzeError || result.error || "Analisis ulang gagal.";
+        setAnalyzeError(errMsg);
+        throw new Error(errMsg);
+      }
+
+      setLatestResult(result.data);
+      setAnalyzeError("");
+      message.success("Analisis ulang berhasil.");
+    } catch (error) {
+      message.error(error.message || "Analisis ulang gagal.");
+    } finally {
+      setReanalyzing(false);
     }
   };
 
@@ -140,6 +173,7 @@ export default function HealthCheckForm() {
       }
 
       setLatestResult(result.data);
+      setAnalyzeError(result.analyzed ? "" : result.analyzeError || "");
       clearForm();
       setSubmitted(true);
 
@@ -194,9 +228,20 @@ export default function HealthCheckForm() {
               <p className="success-meta">
                 Jawaban sudah tersimpan. Analisis AI belum tersedia saat ini.
               </p>
-              <Button type="primary" onClick={() => setSubmitted(false)}>
-                Isi lagi
-              </Button>
+              {analyzeError ? (
+                <p className="analysis-error">{analyzeError}</p>
+              ) : null}
+              <Space wrap style={{ justifyContent: "center" }}>
+                <Button
+                  type="primary"
+                  icon={<ReloadOutlined />}
+                  loading={reanalyzing}
+                  onClick={handleReanalyze}
+                >
+                  Analisis ulang
+                </Button>
+                <Button onClick={() => setSubmitted(false)}>Isi lagi</Button>
+              </Space>
             </>
           )}
         </div>
