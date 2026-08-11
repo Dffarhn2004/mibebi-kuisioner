@@ -156,6 +156,12 @@ body {
   align-items: center;
   text-align: center;
   gap: 12px;
+  width: 100%;
+}
+
+.success-content .ant-btn-primary.ant-btn-block {
+  height: 48px;
+  font-size: 16px;
 }
 
 .success-title {

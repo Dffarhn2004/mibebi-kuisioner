@@ -19,6 +19,7 @@ import {
   FormOutlined,
   ReloadOutlined,
   ShopOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import {
   QUESTIONNAIRE_FOOTER,
@@ -194,56 +195,76 @@ export default function HealthCheckForm() {
   };
 
   if (submitted) {
-    const hasAnalysis = Boolean(latestResult?.analysis);
+    const hasAnalysis = Boolean(
+      latestResult?.analysis?.summary ||
+        (Array.isArray(latestResult?.analysis?.recommendations) &&
+          latestResult.analysis.recommendations.length > 0),
+    );
+
+    if (!hasAnalysis) {
+      return (
+        <Card className="health-check-card success-card">
+          <div className="success-content">
+            <WarningOutlined style={{ fontSize: 56, color: "#D83028" }} />
+            <h3 className="success-title">Jawaban tersimpan</h3>
+            <p className="success-text">
+              Analisis AI gagal diproses. Data resto{" "}
+              <strong>{latestResult?.resto_name || "-"}</strong> sudah aman
+              tersimpan — silakan coba analisis ulang.
+            </p>
+            {analyzeError ? (
+              <p className="analysis-error">{analyzeError}</p>
+            ) : null}
+            <Button
+              type="primary"
+              size="large"
+              icon={<ReloadOutlined />}
+              loading={reanalyzing}
+              onClick={handleReanalyze}
+              block
+              style={{ maxWidth: 360 }}
+            >
+              Analisis ulang
+            </Button>
+            <Button type="link" onClick={() => setSubmitted(false)}>
+              Isi kuisioner lagi
+            </Button>
+          </div>
+        </Card>
+      );
+    }
+
     return (
       <Card className="health-check-card success-card">
         <div className="success-content">
           <CheckCircleOutlined style={{ fontSize: 56, color: "#16A34A" }} />
           <h3 className="success-title">Terima kasih!</h3>
           <p className="success-text">{QUESTIONNAIRE_FOOTER}</p>
-
-          {hasAnalysis ? (
-            <>
-              <p className="success-meta">
-                Analisis AI siap. Unduh PDF laporan untuk resto{" "}
-                <strong>{latestResult.resto_name}</strong>.
-              </p>
-              {latestResult.analysis?.summary ? (
-                <p className="analysis-preview">{latestResult.analysis.summary}</p>
-              ) : null}
-              <Space wrap style={{ justifyContent: "center" }}>
-                <Button
-                  type="primary"
-                  icon={<DownloadOutlined />}
-                  loading={downloading}
-                  onClick={handleDownloadPdf}
-                >
-                  Unduh PDF analisis
-                </Button>
-                <Button onClick={() => setSubmitted(false)}>Isi lagi</Button>
-              </Space>
-            </>
-          ) : (
-            <>
-              <p className="success-meta">
-                Jawaban sudah tersimpan. Analisis AI belum tersedia saat ini.
-              </p>
-              {analyzeError ? (
-                <p className="analysis-error">{analyzeError}</p>
-              ) : null}
-              <Space wrap style={{ justifyContent: "center" }}>
-                <Button
-                  type="primary"
-                  icon={<ReloadOutlined />}
-                  loading={reanalyzing}
-                  onClick={handleReanalyze}
-                >
-                  Analisis ulang
-                </Button>
-                <Button onClick={() => setSubmitted(false)}>Isi lagi</Button>
-              </Space>
-            </>
-          )}
+          <p className="success-meta">
+            Analisis AI siap. Unduh PDF laporan untuk resto{" "}
+            <strong>{latestResult.resto_name}</strong>.
+          </p>
+          {latestResult.analysis?.summary ? (
+            <p className="analysis-preview">{latestResult.analysis.summary}</p>
+          ) : null}
+          <Space wrap style={{ justifyContent: "center" }}>
+            <Button
+              type="primary"
+              icon={<DownloadOutlined />}
+              loading={downloading}
+              onClick={handleDownloadPdf}
+            >
+              Unduh PDF analisis
+            </Button>
+            <Button
+              icon={<ReloadOutlined />}
+              loading={reanalyzing}
+              onClick={handleReanalyze}
+            >
+              Analisis ulang
+            </Button>
+            <Button onClick={() => setSubmitted(false)}>Isi lagi</Button>
+          </Space>
         </div>
       </Card>
     );
