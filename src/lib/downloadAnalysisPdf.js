@@ -66,7 +66,7 @@ export function downloadAnalysisPdf({
 
   doc.setFontSize(14);
   doc.setTextColor(17, 17, 17);
-  doc.text("Laporan Business Health Check", margin, y);
+  doc.text("Bisnis Analysis Position", margin, y);
   y += 8;
 
   doc.setFont("helvetica", "normal");

@@ -1,6 +1,6 @@
 /** Business Health Check Resto — 33 pertanyaan YA/TIDAK */
 
-export const QUESTIONNAIRE_TITLE = "Business Health Check Resto";
+export const QUESTIONNAIRE_TITLE = "Bisnis Analysis Position";
 
 export const QUESTIONNAIRE_FOOTER =
   "Jawaban Anda akan digunakan untuk membantu mengidentifikasi peluang dan tantangan dalam pengelolaan bisnis resto Anda.";

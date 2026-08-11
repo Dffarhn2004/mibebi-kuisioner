@@ -11,8 +11,8 @@ export default function HomePage() {
           <p className="brand-eyebrow">Mibebi</p>
           <h1 className="hero-title">{QUESTIONNAIRE_TITLE}</h1>
           <p className="hero-subtitle">
-            Jawab YA atau TIDAK pada setiap pertanyaan untuk membantu
-            mengidentifikasi peluang dan tantangan pengelolaan bisnis resto Anda.
+            Business Health Check untuk mengidentifikasi peluang dan tantangan
+            pengelolaan bisnis resto Anda bersama Mibebi.
           </p>
         </header>
 
