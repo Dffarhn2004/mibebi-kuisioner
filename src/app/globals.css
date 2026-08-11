@@ -1,8 +1,11 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
+  --background: #f6f3ef;
   --foreground: #171717;
+  --mibebi-red: #d83028;
+  --mibebi-cream: #fff7e6;
+  --mibebi-surface: #ffffff;
 }
 
 @theme inline {
@@ -12,15 +15,236 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), "Segoe UI", sans-serif;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.health-check-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(248, 192, 40, 0.22), transparent 34%),
+    radial-gradient(circle at top right, rgba(216, 48, 40, 0.12), transparent 30%),
+    linear-gradient(180deg, #fffaf2 0%, #f6f3ef 42%, #f3efe9 100%);
+  padding: 32px 16px 56px;
+}
+
+.health-check-shell {
+  width: 100%;
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+.health-check-hero {
+  margin-bottom: 24px;
+}
+
+.brand-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0 10px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(216, 48, 40, 0.1);
+  color: var(--mibebi-red);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hero-title {
+  margin: 0 0 10px;
+  color: #111111;
+  font-size: clamp(1.75rem, 4vw, 2.4rem);
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.hero-subtitle {
+  margin: 0;
+  max-width: 640px;
+  color: #6b7280;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.health-check-card {
+  margin-bottom: 16px;
+  border: 1px solid rgba(17, 17, 17, 0.06) !important;
+  box-shadow: 0 10px 30px rgba(17, 17, 17, 0.04);
+  background: var(--mibebi-surface) !important;
+}
+
+.identity-card,
+.section-card,
+.submit-card,
+.success-card {
+  border-radius: 16px !important;
+}
+
+.progress-card {
+  border-radius: 14px !important;
+  background: linear-gradient(180deg, #fff 0%, #fff9f2 100%) !important;
+}
+
+.sticky-progress {
+  position: sticky;
+  top: 12px;
+  z-index: 50;
+  /* jangan blokir klik soal di bawah card */
+  pointer-events: none;
+}
+
+.sticky-progress .ant-card-body,
+.sticky-progress .ant-card-body * {
+  pointer-events: auto;
+}
+
+.progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+  color: #111111;
+}
+
+.section-desc,
+.progress-hint,
+.submit-note,
+.success-text,
+.success-meta {
+  margin: 4px 0 0;
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.progress-label {
+  margin: 0;
+  font-weight: 650;
+  color: #111111;
+}
+
+.question-number {
+  color: #d83028;
+  font-weight: 700;
+  margin-right: 8px;
+}
+
+.success-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+}
+
+.success-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.analysis-preview {
+  margin: 0;
+  max-width: 520px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fff7e6;
+  color: #44403c;
+  font-size: 14px;
+  line-height: 1.55;
+  text-align: left;
+}
+
+.submit-note {
+  margin: 0 0 16px;
+}
+
+.sections-stack,
+.questions-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.questions-stack {
+  gap: 20px;
+}
+
+.question-text {
+  line-height: 1.55;
+  margin-bottom: 12px;
+}
+
+.yes-no-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.yes-no-btn {
+  min-width: 104px;
+  height: 40px;
+  padding: 0 18px;
+  border: 1px solid #d9d9d9;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #111111;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.yes-no-btn:hover {
+  border-color: #d83028;
+  color: #d83028;
+}
+
+.yes-no-btn.is-active {
+  background: #d83028;
+  border-color: #d83028;
+  color: #ffffff;
+}
+
+.yes-no-btn.is-active:hover {
+  background: #c52a23;
+  border-color: #c52a23;
+  color: #ffffff;
+}
+
+@media (max-width: 640px) {
+  .health-check-page {
+    padding: 20px 12px 40px;
+  }
+
+  .sticky-progress {
+    top: 8px;
+  }
+
+  .yes-no-btn {
+    flex: 1;
+    min-width: 0;
+  }
 }
