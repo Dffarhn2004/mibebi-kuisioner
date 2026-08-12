@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   App,
   Button,
@@ -12,8 +12,10 @@ import {
   Progress,
   Row,
   Space,
+  Spin,
 } from "antd";
 import {
+  ArrowLeftOutlined,
   CheckCircleOutlined,
   DownloadOutlined,
   FormOutlined,
@@ -22,16 +24,23 @@ import {
   WarningOutlined,
 } from "@ant-design/icons";
 import {
+  ANSWER_TYPE_LABELS,
   QUESTIONNAIRE_FOOTER,
-  SECTIONS,
-  TOTAL_QUESTIONS,
 } from "@/data/questions";
 import { downloadAnalysisPdf } from "@/lib/downloadAnalysisPdf";
 
-function countAnswered(answers) {
-  return Object.values(answers).filter(
-    (value) => value === "yes" || value === "no",
-  ).length;
+function countAnswered(answers, questions, answerType) {
+  return questions.filter((q) => {
+    const value = answers[q.id];
+    if (answerType === "yes_no") return value === "yes" || value === "no";
+    if (answerType === "scale_1_5") {
+      return ["1", "2", "3", "4", "5"].includes(String(value));
+    }
+    if (answerType === "text") {
+      return typeof value === "string" && value.trim().length > 0;
+    }
+    return false;
+  }).length;
 }
 
 function YesNoButtons({ value, onChange }) {
@@ -55,9 +64,51 @@ function YesNoButtons({ value, onChange }) {
   );
 }
 
+function ScaleButtons({ value, onChange }) {
+  return (
+    <div className="yes-no-buttons">
+      {["1", "2", "3", "4", "5"].map((n) => (
+        <button
+          key={n}
+          type="button"
+          className={`yes-no-btn scale-btn${value === n ? " is-active" : ""}`}
+          onClick={() => onChange(n)}
+        >
+          {n}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function AnswerInput({ answerType, value, onChange }) {
+  if (answerType === "yes_no") {
+    return <YesNoButtons value={value} onChange={onChange} />;
+  }
+  if (answerType === "scale_1_5") {
+    return <ScaleButtons value={value} onChange={onChange} />;
+  }
+  return (
+    <Input.TextArea
+      rows={3}
+      value={value || ""}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder="Tulis jawaban Anda…"
+      size="large"
+    />
+  );
+}
+
 export default function HealthCheckForm() {
   const { message } = App.useApp();
   const [form] = Form.useForm();
+
+  const [categories, setCategories] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [questions, setQuestions] = useState([]);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+
   const [answers, setAnswers] = useState({});
   const [latestResult, setLatestResult] = useState(null);
   const [analyzeError, setAnalyzeError] = useState("");
@@ -66,8 +117,62 @@ export default function HealthCheckForm() {
   const [reanalyzing, setReanalyzing] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
-  const answeredCount = useMemo(() => countAnswered(answers), [answers]);
-  const progressPercent = Math.round((answeredCount / TOTAL_QUESTIONS) * 100);
+  const answerType = selectedCategory?.answer_type || "yes_no";
+  const totalQuestions = questions.length;
+  const answeredCount = useMemo(
+    () => countAnswered(answers, questions, answerType),
+    [answers, questions, answerType],
+  );
+  const progressPercent =
+    totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0;
+
+  const loadCategories = useCallback(async () => {
+    try {
+      setCategoriesLoading(true);
+      const response = await fetch("/api/categories");
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Gagal memuat kategori.");
+      }
+      setCategories(Array.isArray(result.data) ? result.data : []);
+    } catch (error) {
+      message.error(error.message || "Gagal memuat kategori.");
+    } finally {
+      setCategoriesLoading(false);
+    }
+  }, [message]);
+
+  useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
+
+  const selectCategory = async (category) => {
+    setQuestionsLoading(true);
+    setAnswers({});
+    setSelectedCategory(category);
+    try {
+      const response = await fetch(`/api/categories/${category.id}`);
+      const result = await response.json();
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Gagal memuat soal.");
+      }
+      setSelectedCategory(result.data.category);
+      setQuestions(Array.isArray(result.data.questions) ? result.data.questions : []);
+    } catch (error) {
+      message.error(error.message || "Gagal memuat soal.");
+      setSelectedCategory(null);
+      setQuestions([]);
+    } finally {
+      setQuestionsLoading(false);
+    }
+  };
+
+  const backToCategories = () => {
+    setSelectedCategory(null);
+    setQuestions([]);
+    setAnswers({});
+    form.resetFields();
+  };
 
   const setAnswer = (questionId, value) => {
     setAnswers((prev) => ({
@@ -139,10 +244,14 @@ export default function HealthCheckForm() {
   };
 
   const onFinish = async (values) => {
-    const answered = countAnswered(answers);
-    if (answered < TOTAL_QUESTIONS) {
+    if (!selectedCategory?.id) {
+      message.warning("Pilih kategori terlebih dahulu.");
+      return;
+    }
+
+    if (answeredCount < totalQuestions) {
       message.warning(
-        `Masih ada ${TOTAL_QUESTIONS - answered} pertanyaan yang belum dijawab.`,
+        `Masih ada ${totalQuestions - answeredCount} pertanyaan yang belum dijawab.`,
       );
       return;
     }
@@ -150,8 +259,8 @@ export default function HealthCheckForm() {
     setSubmitting(true);
     try {
       const normalizedAnswers = {};
-      for (let id = 1; id <= TOTAL_QUESTIONS; id += 1) {
-        normalizedAnswers[String(id)] = answers[id];
+      for (const question of questions) {
+        normalizedAnswers[String(question.id)] = answers[question.id];
       }
 
       const payload = {
@@ -159,6 +268,7 @@ export default function HealthCheckForm() {
         ownerName: values.ownerName,
         whatsapp: values.whatsapp,
         city: values.city || "",
+        categoryId: selectedCategory.id,
         answers: normalizedAnswers,
       };
 
@@ -194,6 +304,13 @@ export default function HealthCheckForm() {
     }
   };
 
+  const resetToStart = () => {
+    setSubmitted(false);
+    setLatestResult(null);
+    setAnalyzeError("");
+    backToCategories();
+  };
+
   if (submitted) {
     const hasAnalysis = Boolean(
       latestResult?.analysis?.summary ||
@@ -226,7 +343,7 @@ export default function HealthCheckForm() {
             >
               Analisis ulang
             </Button>
-            <Button type="link" onClick={() => setSubmitted(false)}>
+            <Button type="link" onClick={resetToStart}>
               Isi kuisioner lagi
             </Button>
           </div>
@@ -263,8 +380,69 @@ export default function HealthCheckForm() {
             >
               Analisis ulang
             </Button>
-            <Button onClick={() => setSubmitted(false)}>Isi lagi</Button>
+            <Button onClick={resetToStart}>Isi lagi</Button>
           </Space>
+        </div>
+      </Card>
+    );
+  }
+
+  if (!selectedCategory) {
+    return (
+      <Card className="health-check-card">
+        <div className="section-heading">
+          <FormOutlined style={{ fontSize: 22, color: "#D83028" }} />
+          <div>
+            <h2 className="section-title">Pilih kategori</h2>
+            <p className="section-desc">
+              Pilih fokus kuisioner yang ingin Anda isi. Setiap kategori punya
+              soal sendiri dengan tipe jawaban yang sama.
+            </p>
+          </div>
+        </div>
+
+        {categoriesLoading ? (
+          <div style={{ textAlign: "center", padding: "40px 0" }}>
+            <Spin size="large" />
+          </div>
+        ) : categories.length === 0 ? (
+          <p className="section-desc">
+            Belum ada kategori aktif. Silakan atur di mibebi-admin.
+          </p>
+        ) : (
+          <div className="category-grid">
+            {categories.map((category) => (
+              <button
+                key={category.id}
+                type="button"
+                className="category-pick-card"
+                onClick={() => selectCategory(category)}
+              >
+                <span className="category-pick-title">{category.title}</span>
+                {category.description ? (
+                  <span className="category-pick-desc">{category.description}</span>
+                ) : null}
+                <span className="category-pick-meta">
+                  {category.questions_count} soal ·{" "}
+                  {ANSWER_TYPE_LABELS[category.answer_type] ||
+                    category.answer_type}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </Card>
+    );
+  }
+
+  if (questionsLoading) {
+    return (
+      <Card className="health-check-card">
+        <div style={{ textAlign: "center", padding: "48px 0" }}>
+          <Spin size="large" />
+          <p className="section-desc" style={{ marginTop: 16 }}>
+            Memuat soal {selectedCategory.title}…
+          </p>
         </div>
       </Card>
     );
@@ -278,13 +456,28 @@ export default function HealthCheckForm() {
       onFinish={onFinish}
       scrollToFirstError
     >
+      <div className="category-toolbar">
+        <Button
+          type="link"
+          icon={<ArrowLeftOutlined />}
+          onClick={backToCategories}
+          style={{ paddingLeft: 0 }}
+        >
+          Ganti kategori
+        </Button>
+        <span className="category-toolbar-label">
+          {selectedCategory.title} ·{" "}
+          {ANSWER_TYPE_LABELS[answerType] || answerType}
+        </span>
+      </div>
+
       <Card className="health-check-card identity-card">
         <div className="section-heading">
           <ShopOutlined style={{ fontSize: 22, color: "#D83028" }} />
           <div>
             <h2 className="section-title">Data Resto</h2>
             <p className="section-desc">
-              Lengkapi identitas singkat sebelum mengisi health check.
+              Lengkapi identitas singkat sebelum mengisi kuisioner.
             </p>
           </div>
         </div>
@@ -335,10 +528,14 @@ export default function HealthCheckForm() {
         <div className="progress-row">
           <div>
             <p className="progress-label">
-              Progress: {answeredCount}/{TOTAL_QUESTIONS} pertanyaan
+              Progress: {answeredCount}/{totalQuestions} pertanyaan
             </p>
             <p className="progress-hint">
-              Jawab YA atau TIDAK pada setiap pertanyaan
+              {answerType === "yes_no"
+                ? "Jawab YA atau TIDAK pada setiap pertanyaan"
+                : answerType === "scale_1_5"
+                  ? "Pilih skala 1–5 pada setiap pertanyaan"
+                  : "Isi jawaban teks pada setiap pertanyaan"}
             </p>
           </div>
           <Progress
@@ -357,41 +554,34 @@ export default function HealthCheckForm() {
         />
       </Card>
 
-      <div className="sections-stack">
-        {SECTIONS.map((section) => (
-          <Card
-            key={section.key}
-            className="health-check-card section-card"
-            title={
-              <Space>
-                <FormOutlined style={{ color: "#D83028" }} />
-                <span>
-                  {section.key === "extra" ? "" : `${section.key}. `}
-                  {section.title}
-                </span>
-              </Space>
-            }
-          >
-            <div className="questions-stack">
-              {section.questions.map((question, index) => (
-                <div key={question.id} className="question-block">
-                  <p className="question-text">
-                    <span className="question-number">{question.id}.</span>
-                    {question.text}
-                  </p>
-                  <YesNoButtons
-                    value={answers[question.id]}
-                    onChange={(value) => setAnswer(question.id, value)}
-                  />
-                  {index < section.questions.length - 1 ? (
-                    <Divider style={{ margin: "16px 0 0" }} />
-                  ) : null}
-                </div>
-              ))}
+      <Card
+        className="health-check-card section-card"
+        title={
+          <Space>
+            <FormOutlined style={{ color: "#D83028" }} />
+            <span>{selectedCategory.title}</span>
+          </Space>
+        }
+      >
+        <div className="questions-stack">
+          {questions.map((question, index) => (
+            <div key={question.id} className="question-block">
+              <p className="question-text">
+                <span className="question-number">{index + 1}.</span>
+                {question.question_text}
+              </p>
+              <AnswerInput
+                answerType={answerType}
+                value={answers[question.id]}
+                onChange={(value) => setAnswer(question.id, value)}
+              />
+              {index < questions.length - 1 ? (
+                <Divider style={{ margin: "16px 0 0" }} />
+              ) : null}
             </div>
-          </Card>
-        ))}
-      </div>
+          ))}
+        </div>
+      </Card>
 
       <Card className="health-check-card submit-card">
         <p className="submit-note">{QUESTIONNAIRE_FOOTER}</p>

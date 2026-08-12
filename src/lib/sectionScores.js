@@ -1,22 +1,58 @@
-import { SECTIONS } from "@/data/questions";
+import { FEATURE_CATALOG } from "@/data/featureCatalog";
 
-/** Hitung skor YA per section dari map jawaban { "1": "yes"|"no" }. */
-export function buildSectionScores(answers) {
-  const scores = {};
+/**
+ * Bangun skor sederhana untuk 1 kategori yang dipilih.
+ * answers: { [questionId]: "yes"|"no"|string }
+ */
+export function buildCategoryScore({ category, questions, answers }) {
+  const total = questions.length;
+  let yes = 0;
+  let answered = 0;
 
-  for (const section of SECTIONS) {
-    let yes = 0;
-    for (const question of section.questions) {
-      if (answers[String(question.id)] === "yes" || answers[question.id] === "yes") {
-        yes += 1;
-      }
-    }
-    scores[section.key] = {
-      title: section.title,
-      yes,
-      total: section.questions.length,
-    };
+  for (const question of questions) {
+    const value = answers[String(question.id)] ?? answers[question.id];
+    if (value == null || value === "") continue;
+    answered += 1;
+    if (value === "yes") yes += 1;
   }
 
-  return scores;
+  return {
+    [category.slug || category.id]: {
+      title: category.title,
+      yes,
+      answered,
+      total,
+      answer_type: category.answer_type,
+    },
+  };
+}
+
+/** Siapkan payload pertanyaan untuk edge function analysis-business-posisi. */
+export function buildYesQuestionsPayload({
+  category,
+  questions,
+  answers,
+}) {
+  const answerType = category.answer_type || "yes_no";
+
+  return questions
+    .map((q) => {
+      const value = answers[String(q.id)] ?? answers[q.id];
+      if (value == null || value === "") return null;
+
+      if (answerType === "yes_no" && value !== "yes") return null;
+
+      const candidateFeatures = (Array.isArray(q.feature_keys) ? q.feature_keys : [])
+        .map((key) => FEATURE_CATALOG.find((f) => f.key === key)?.name)
+        .filter(Boolean);
+
+      return {
+        id: q.id,
+        section: category.title,
+        text: q.question_text,
+        answer: value,
+        candidate_features: candidateFeatures,
+      };
+    })
+    .filter(Boolean);
 }

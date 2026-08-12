@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { analysisBusinessPosisi } from "@/lib/analysisBusinessPosisi";
-import { buildSectionScores } from "@/lib/sectionScores";
+import { buildYesQuestionsPayload } from "@/lib/sectionScores";
 import { createServiceClient } from "@/lib/supabaseServer";
 
 export const maxDuration = 60;
@@ -21,7 +21,7 @@ export async function POST(_request, { params }) {
     const { data: submission, error } = await supabase
       .from("business_health_check_submissions")
       .select(
-        "id, created_at, resto_name, owner_name, whatsapp, city, answers, yes_ids, yes_count, total_questions, section_scores, status, metadata, analysis, analysis_text, analyzed_at",
+        "id, created_at, resto_name, owner_name, whatsapp, city, category_id, answers, yes_ids, yes_count, total_questions, section_scores, status, metadata, analysis, analysis_text, analyzed_at",
       )
       .eq("id", submissionId)
       .single();
@@ -34,23 +34,45 @@ export async function POST(_request, { params }) {
     }
 
     const answers = submission.answers || {};
-    const yesIds = Array.isArray(submission.yes_ids)
-      ? submission.yes_ids
-      : Object.entries(answers)
-          .filter(([, value]) => value === "yes")
-          .map(([qid]) => Number(qid))
-          .sort((a, b) => a - b);
-    const sectionScores =
-      submission.section_scores || buildSectionScores(answers);
+    let yesQuestions = [];
+    let sectionScores = submission.section_scores || {};
+    let categoryTitle = submission.metadata?.category_title || "";
+    let categoryPrompt = "";
+
+    if (submission.category_id) {
+      const { data: category } = await supabase
+        .from("kuisioner_categories")
+        .select("id, title, slug, answer_type, analysis_prompt")
+        .eq("id", submission.category_id)
+        .maybeSingle();
+
+      const { data: questions } = await supabase
+        .from("kuisioner_questions")
+        .select("id, question_text, sort_order, feature_keys")
+        .eq("category_id", submission.category_id)
+        .order("sort_order", { ascending: true });
+
+      if (category && questions?.length) {
+        categoryTitle = category.title || categoryTitle;
+        categoryPrompt = category.analysis_prompt || "";
+        yesQuestions = buildYesQuestionsPayload({
+          category,
+          questions,
+          answers,
+        });
+      }
+    }
 
     try {
       const result = await analysisBusinessPosisi({
         restoName: submission.resto_name,
         ownerName: submission.owner_name,
         city: submission.city || "",
-        yesIds,
+        yesQuestions,
         sectionScores,
         submissionId: submission.id,
+        categoryTitle,
+        categoryPrompt,
       });
 
       const previousMeta =
@@ -76,7 +98,7 @@ export async function POST(_request, { params }) {
         })
         .eq("id", submission.id)
         .select(
-          "id, created_at, resto_name, owner_name, whatsapp, city, yes_count, total_questions, status, analysis, analysis_text, analyzed_at",
+          "id, created_at, resto_name, owner_name, whatsapp, city, category_id, yes_count, total_questions, status, analysis, analysis_text, analyzed_at",
         )
         .single();
 

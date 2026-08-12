@@ -254,6 +254,70 @@ body {
   color: #ffffff;
 }
 
+.yes-no-btn.scale-btn {
+  min-width: 48px;
+  padding: 0 12px;
+}
+
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.category-pick-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  padding: 18px 16px;
+  border: 1px solid rgba(17, 17, 17, 0.08);
+  border-radius: 14px;
+  background: #fffaf5;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.category-pick-card:hover {
+  border-color: rgba(216, 48, 40, 0.45);
+  box-shadow: 0 8px 24px rgba(216, 48, 40, 0.08);
+  transform: translateY(-1px);
+}
+
+.category-pick-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111111;
+}
+
+.category-pick-desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #6b7280;
+}
+
+.category-pick-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #d83028;
+}
+
+.category-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.category-toolbar-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
 @media (max-width: 640px) {
   .health-check-page {
     padding: 20px 12px 40px;
