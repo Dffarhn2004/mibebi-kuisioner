@@ -30,6 +30,7 @@ async function uploadPdfToSupabaseStorage({ buffer, filename, submissionId }) {
     url: data.publicUrl,
     path,
     mediaId: null,
+    storageBackend: "supabase",
   };
 }
 
@@ -48,7 +49,7 @@ async function removePreviousPdf({ pdfPath, pdfMediaId }) {
 
 /**
  * Generate + upload PDF hanya setelah analisis sukses.
- * PDF lama diganti (analisis ulang memakai yang terakhir).
+ * Prioritas: mibebi-media → fallback Supabase Storage.
  */
 export async function persistSuccessfulAnalysisPdf({
   submission,
@@ -78,6 +79,8 @@ export async function persistSuccessfulAnalysisPdf({
   });
 
   let uploaded;
+  let mediaHubError = null;
+
   if (isMediaHubConfigured()) {
     try {
       const media = await uploadToMediaHub({
@@ -90,8 +93,10 @@ export async function persistSuccessfulAnalysisPdf({
         url: media.url,
         path: media.path,
         mediaId: media.id,
+        storageBackend: "mibebi-media",
       };
     } catch (error) {
+      mediaHubError = error.message || "Media hub upload gagal";
       console.error(
         "Media hub PDF upload gagal, fallback ke Supabase Storage:",
         error,
@@ -103,6 +108,9 @@ export async function persistSuccessfulAnalysisPdf({
       });
     }
   } else {
+    mediaHubError =
+      "MEDIA_HUB_API_BASE_URL / MEDIA_API_SECRET belum di-set di environment.";
+    console.warn(mediaHubError, "Fallback ke Supabase Storage.");
     uploaded = await uploadPdfToSupabaseStorage({
       buffer,
       filename,
@@ -114,6 +122,8 @@ export async function persistSuccessfulAnalysisPdf({
     pdf_url: uploaded.url,
     pdf_path: uploaded.path,
     pdf_media_id: uploaded.mediaId,
+    storage_backend: uploaded.storageBackend,
+    media_hub_error: mediaHubError,
   };
 }
 

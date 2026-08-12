@@ -41,7 +41,10 @@ export async function uploadToMediaHub({
 
   const base = process.env.MEDIA_HUB_API_BASE_URL.replace(/\/+$/, "");
   const form = new FormData();
-  const blob = new Blob([buffer], { type: mimeType });
+  // Uint8Array agar Buffer Node/serverless terkirim benar ke FormData
+  const bytes =
+    buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  const blob = new Blob([bytes], { type: mimeType });
   form.append("file", blob, filename);
   if (folder) form.append("folder", folder);
 

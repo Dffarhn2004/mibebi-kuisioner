@@ -119,10 +119,14 @@ export async function POST(_request, { params }) {
         pdf_path: submission.pdf_path || null,
         pdf_media_id: submission.pdf_media_id || null,
       };
+      let pdfMeta = {
+        pdf_storage_backend: previousMeta.pdf_storage_backend || null,
+        media_hub_error: null,
+      };
       let pdfError = null;
 
       try {
-        pdfFields = await persistSuccessfulAnalysisPdf({
+        const persisted = await persistSuccessfulAnalysisPdf({
           submission: {
             ...submission,
             analyzed_at: analyzedAt,
@@ -131,6 +135,15 @@ export async function POST(_request, { params }) {
           analysis: result.analysis,
           categoryTitle,
         });
+        pdfFields = {
+          pdf_url: persisted.pdf_url,
+          pdf_path: persisted.pdf_path,
+          pdf_media_id: persisted.pdf_media_id,
+        };
+        pdfMeta = {
+          pdf_storage_backend: persisted.storage_backend || null,
+          media_hub_error: persisted.media_hub_error || null,
+        };
       } catch (err) {
         pdfError = err.message || "Gagal menyimpan PDF.";
         console.error("persistSuccessfulAnalysisPdf (reanalyze) error:", err);
@@ -152,6 +165,7 @@ export async function POST(_request, { params }) {
             analyze_error: null,
             pdf_error: pdfError,
             reanalyzed_at: analyzedAt,
+            ...pdfMeta,
           },
         })
         .eq("id", submission.id)

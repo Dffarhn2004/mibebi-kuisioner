@@ -214,10 +214,14 @@ export async function POST(request) {
         pdf_path: null,
         pdf_media_id: null,
       };
+      let pdfMeta = {
+        pdf_storage_backend: null,
+        media_hub_error: null,
+      };
       let pdfError = null;
 
       try {
-        pdfFields = await persistSuccessfulAnalysisPdf({
+        const persisted = await persistSuccessfulAnalysisPdf({
           submission: {
             ...saved,
             yes_count: yesIds.length,
@@ -228,6 +232,15 @@ export async function POST(request) {
           analysis: result.analysis,
           categoryTitle: category.title,
         });
+        pdfFields = {
+          pdf_url: persisted.pdf_url,
+          pdf_path: persisted.pdf_path,
+          pdf_media_id: persisted.pdf_media_id,
+        };
+        pdfMeta = {
+          pdf_storage_backend: persisted.storage_backend || null,
+          media_hub_error: persisted.media_hub_error || null,
+        };
       } catch (err) {
         pdfError = err.message || "Gagal menyimpan PDF.";
         console.error("persistSuccessfulAnalysisPdf error:", err);
@@ -247,6 +260,7 @@ export async function POST(request) {
             ai_edge_function: "analysis-business-posisi",
             ai_key_id: result.keyId,
             pdf_error: pdfError,
+            ...pdfMeta,
           },
         })
         .eq("id", saved.id)
