@@ -67,8 +67,13 @@ export async function uploadToMediaHub({
     );
   }
 
-  // PDF raw: pakai originalUrl Cloudinary agar langsung bisa diunduh
-  const url = json.data.originalUrl || json.data.url;
+  // PDF: pakai delivery URL yang berakhiran .pdf (bukan raw Cloudinary tanpa ekstensi)
+  const isPdf = mimeType === "application/pdf";
+  const deliveryUrl = json.data.url || "";
+  const originalUrl = json.data.originalUrl || "";
+  const url = isPdf
+    ? deliveryUrl || originalUrl
+    : originalUrl || deliveryUrl;
   if (!url) {
     throw new Error("Media hub tidak mengembalikan URL file");
   }
