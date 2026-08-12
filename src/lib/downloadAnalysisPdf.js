@@ -12,10 +12,18 @@ function wrapAddText(doc, text, x, y, maxWidth, lineHeight = 5) {
   return y + lines.length * lineHeight;
 }
 
+function slugifyName(name) {
+  return safe(name, "resto")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40);
+}
+
 /**
- * Olah hasil analisis AI menjadi PDF dan trigger download di browser.
+ * Bangun dokumen PDF analisis (bisa dipakai browser atau server).
  */
-export function downloadAnalysisPdf({
+export function buildAnalysisPdfDocument({
   restoName,
   ownerName,
   city,
@@ -24,6 +32,7 @@ export function downloadAnalysisPdf({
   totalQuestions,
   analysis,
   createdAt,
+  categoryTitle,
 }) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -57,7 +66,6 @@ export function downloadAnalysisPdf({
     y += 3;
   };
 
-  // Header
   doc.setFont("helvetica", "bold");
   doc.setFontSize(18);
   doc.setTextColor(216, 48, 40);
@@ -68,6 +76,14 @@ export function downloadAnalysisPdf({
   doc.setTextColor(17, 17, 17);
   doc.text("Bisnis Analysis Position", margin, y);
   y += 8;
+
+  if (categoryTitle) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(216, 48, 40);
+    y = wrapAddText(doc, `Kategori: ${safe(categoryTitle)}`, margin, y, maxWidth, 5);
+    y += 2;
+  }
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
@@ -82,8 +98,10 @@ export function downloadAnalysisPdf({
   );
   y = wrapAddText(
     doc,
-    `YA: ${yesCount ?? 0}/${totalQuestions ?? 33} | Dibuat: ${
-      createdAt ? new Date(createdAt).toLocaleString("id-ID") : new Date().toLocaleString("id-ID")
+    `YA: ${yesCount ?? 0}/${totalQuestions ?? 0} | Dibuat: ${
+      createdAt
+        ? new Date(createdAt).toLocaleString("id-ID")
+        : new Date().toLocaleString("id-ID")
     }`,
     margin,
     y,
@@ -118,14 +136,19 @@ export function downloadAnalysisPdf({
     y = doc.lastAutoTable.finalY + 8;
   }
 
-  if (Array.isArray(analysis?.recommendations) && analysis.recommendations.length) {
+  if (
+    Array.isArray(analysis?.recommendations) &&
+    analysis.recommendations.length
+  ) {
     addTitle("Rekomendasi Fitur Mibebi");
     autoTable(doc, {
       startY: y,
       head: [["Masalah", "Fitur", "Prioritas", "Penjelasan"]],
       body: analysis.recommendations.map((item) => [
         safe(item.problem),
-        Array.isArray(item.features) ? item.features.join(", ") : safe(item.features),
+        Array.isArray(item.features)
+          ? item.features.join(", ")
+          : safe(item.features),
         safe(item.priority, "medium"),
         safe(item.explanation),
       ]),
@@ -141,12 +164,26 @@ export function downloadAnalysisPdf({
     });
   }
 
-  const filename = `mibebi-health-check-${safe(restoName, "resto")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40)}.pdf`;
+  return doc;
+}
 
+export function buildAnalysisPdfFilename(restoName) {
+  return `mibebi-health-check-${slugifyName(restoName)}.pdf`;
+}
+
+/** Buffer PDF untuk upload server-side. */
+export function buildAnalysisPdfBuffer(params) {
+  const doc = buildAnalysisPdfDocument(params);
+  const arrayBuffer = doc.output("arraybuffer");
+  return Buffer.from(arrayBuffer);
+}
+
+/**
+ * Olah hasil analisis AI menjadi PDF dan trigger download di browser.
+ */
+export function downloadAnalysisPdf(params) {
+  const doc = buildAnalysisPdfDocument(params);
+  const filename = buildAnalysisPdfFilename(params.restoName);
   doc.save(filename);
   return filename;
 }

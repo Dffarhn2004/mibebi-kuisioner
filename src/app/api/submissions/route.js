@@ -4,6 +4,10 @@ import {
   buildCategoryScore,
   buildYesQuestionsPayload,
 } from "@/lib/sectionScores";
+import {
+  buildQuestionsSnapshot,
+  persistSuccessfulAnalysisPdf,
+} from "@/lib/persistAnalysisPdf";
 import { createServiceClient } from "@/lib/supabaseServer";
 
 export const maxDuration = 60;
@@ -70,7 +74,9 @@ export async function POST(request) {
 
     const { data: category, error: catError } = await supabase
       .from("kuisioner_categories")
-      .select("id, title, slug, description, answer_type, is_active, analysis_prompt")
+      .select(
+        "id, title, slug, description, answer_type, is_active, analysis_prompt",
+      )
       .eq("id", categoryId)
       .eq("is_active", true)
       .maybeSingle();
@@ -139,6 +145,11 @@ export async function POST(request) {
       questions,
       answers,
     });
+    const questionsSnapshot = buildQuestionsSnapshot({
+      category,
+      questions,
+      answers,
+    });
 
     const row = {
       resto_name: restoName,
@@ -146,7 +157,9 @@ export async function POST(request) {
       whatsapp,
       city: city || null,
       category_id: category.id,
+      category_title_snapshot: category.title,
       answers,
+      questions_snapshot: questionsSnapshot,
       yes_ids: yesIds,
       yes_count: yesIds.length,
       total_questions: questions.length,
@@ -168,21 +181,20 @@ export async function POST(request) {
       .from("business_health_check_submissions")
       .insert(row)
       .select(
-        "id, created_at, resto_name, owner_name, whatsapp, city, category_id, yes_count, total_questions, status",
+        "id, created_at, resto_name, owner_name, whatsapp, city, category_id, category_title_snapshot, yes_count, total_questions, status, pdf_url, pdf_path, pdf_media_id, metadata",
       )
       .single();
 
     if (error) {
       console.error("Gagal insert business_health_check_submissions:", error);
       return NextResponse.json(
-        { success: false, error: error.message || "Gagal menyimpan ke database." },
+        {
+          success: false,
+          error: error.message || "Gagal menyimpan ke database.",
+        },
         { status: 500 },
       );
     }
-
-    let analysis = null;
-    let analysisText = null;
-    let analyzeError = null;
 
     try {
       const result = await analysisBusinessPosisi({
@@ -195,26 +207,51 @@ export async function POST(request) {
         categoryTitle: category.title,
         categoryPrompt: category.analysis_prompt || "",
       });
-      analysis = result.analysis;
-      analysisText = result.analysisText;
+
+      const analyzedAt = new Date().toISOString();
+      let pdfFields = {
+        pdf_url: null,
+        pdf_path: null,
+        pdf_media_id: null,
+      };
+      let pdfError = null;
+
+      try {
+        pdfFields = await persistSuccessfulAnalysisPdf({
+          submission: {
+            ...saved,
+            yes_count: yesIds.length,
+            total_questions: questions.length,
+            analyzed_at: analyzedAt,
+            category_title_snapshot: category.title,
+          },
+          analysis: result.analysis,
+          categoryTitle: category.title,
+        });
+      } catch (err) {
+        pdfError = err.message || "Gagal menyimpan PDF.";
+        console.error("persistSuccessfulAnalysisPdf error:", err);
+      }
 
       const { data: updated, error: updateError } = await supabase
         .from("business_health_check_submissions")
         .update({
-          analysis,
-          analysis_text: analysisText,
+          analysis: result.analysis,
+          analysis_text: result.analysisText,
           status: "analyzed",
-          analyzed_at: new Date().toISOString(),
+          analyzed_at: analyzedAt,
+          ...pdfFields,
           metadata: {
             ...row.metadata,
             ai_provider: "gemini",
             ai_edge_function: "analysis-business-posisi",
             ai_key_id: result.keyId,
+            pdf_error: pdfError,
           },
         })
         .eq("id", saved.id)
         .select(
-          "id, created_at, resto_name, owner_name, whatsapp, city, category_id, yes_count, total_questions, status, analysis, analysis_text, analyzed_at",
+          "id, created_at, resto_name, owner_name, whatsapp, city, category_id, category_title_snapshot, yes_count, total_questions, status, analysis, analysis_text, analyzed_at, pdf_url, pdf_path, pdf_media_id",
         )
         .single();
 
@@ -226,9 +263,11 @@ export async function POST(request) {
         success: true,
         data: updated,
         analyzed: true,
+        pdfSaved: Boolean(updated?.pdf_url),
+        pdfError,
       });
     } catch (aiError) {
-      analyzeError = aiError.message || "Gagal menganalisis dengan AI.";
+      const analyzeError = aiError.message || "Gagal menganalisis dengan AI.";
       console.error("analysis-business-posisi error:", aiError);
 
       await supabase
@@ -249,6 +288,7 @@ export async function POST(request) {
           ...saved,
           analysis: null,
           analysis_text: null,
+          pdf_url: null,
         },
         analyzed: false,
         analyzeError,

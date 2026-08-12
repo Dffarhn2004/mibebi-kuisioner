@@ -187,6 +187,12 @@ export default function HealthCheckForm() {
   };
 
   const handleDownloadPdf = () => {
+    if (latestResult?.pdf_url) {
+      window.open(latestResult.pdf_url, "_blank", "noopener,noreferrer");
+      message.success("PDF dibuka.");
+      return;
+    }
+
     if (!latestResult?.analysis) {
       message.warning("Hasil analisis belum tersedia untuk diunduh.");
       return;
@@ -203,6 +209,7 @@ export default function HealthCheckForm() {
         totalQuestions: latestResult.total_questions,
         analysis: latestResult.analysis,
         createdAt: latestResult.analyzed_at || latestResult.created_at,
+        categoryTitle: latestResult.category_title_snapshot || "",
       });
       message.success("PDF berhasil diunduh.");
     } catch (error) {
