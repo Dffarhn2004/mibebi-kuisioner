@@ -9,7 +9,7 @@ const HomePage = dynamic(() => import("@/components/HomePage"), {
       <div className="health-check-shell">
         <p className="brand-eyebrow">Mibebi</p>
         <h1 className="hero-title">Business Health Check Resto</h1>
-        <p className="hero-subtitle">Memuat formulir...</p>
+        <p className="hero-subtitle">Menyiapkan formulir...</p>
       </div>
     </div>
   ),

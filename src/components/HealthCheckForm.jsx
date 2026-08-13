@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   App,
   Button,
@@ -11,11 +11,11 @@ import {
   Input,
   Progress,
   Row,
+  Select,
   Space,
   Spin,
 } from "antd";
 import {
-  ArrowLeftOutlined,
   CheckCircleOutlined,
   DownloadOutlined,
   FormOutlined,
@@ -43,6 +43,19 @@ function countAnswered(answers, questions, answerType) {
   }).length;
 }
 
+function isIdentityReady(restoName, ownerName, whatsapp) {
+  return Boolean(
+    String(restoName || "").trim() &&
+      String(ownerName || "").trim() &&
+      /^[0-9+\s()-]{8,20}$/.test(String(whatsapp || "").trim()),
+  );
+}
+
+function estimateMinutes(questionCount) {
+  if (!questionCount) return 5;
+  return Math.max(3, Math.ceil(questionCount * 0.35));
+}
+
 function YesNoButtons({ value, onChange }) {
   return (
     <div className="yes-no-buttons">
@@ -51,14 +64,14 @@ function YesNoButtons({ value, onChange }) {
         className={`yes-no-btn yes-btn${value === "yes" ? " is-active" : ""}`}
         onClick={() => onChange("yes")}
       >
-        YA
+        Ya
       </button>
       <button
         type="button"
         className={`yes-no-btn no-btn${value === "no" ? " is-active" : ""}`}
         onClick={() => onChange("no")}
       >
-        TIDAK
+        Tidak
       </button>
     </div>
   );
@@ -66,17 +79,23 @@ function YesNoButtons({ value, onChange }) {
 
 function ScaleButtons({ value, onChange }) {
   return (
-    <div className="yes-no-buttons">
-      {["1", "2", "3", "4", "5"].map((n) => (
-        <button
-          key={n}
-          type="button"
-          className={`yes-no-btn scale-btn${value === n ? " is-active" : ""}`}
-          onClick={() => onChange(n)}
-        >
-          {n}
-        </button>
-      ))}
+    <div className="scale-wrap">
+      <div className="yes-no-buttons">
+        {["1", "2", "3", "4", "5"].map((n) => (
+          <button
+            key={n}
+            type="button"
+            className={`yes-no-btn scale-btn${value === n ? " is-active" : ""}`}
+            onClick={() => onChange(n)}
+          >
+            {n}
+          </button>
+        ))}
+      </div>
+      <div className="scale-legend">
+        <span>1 · kurang</span>
+        <span>5 · sangat baik</span>
+      </div>
     </div>
   );
 }
@@ -93,21 +112,49 @@ function AnswerInput({ answerType, value, onChange }) {
       rows={3}
       value={value || ""}
       onChange={(e) => onChange(e.target.value)}
-      placeholder="Tulis jawaban Anda…"
+      placeholder="Tulis jawaban singkat sesuai kondisi resto Anda…"
       size="large"
     />
+  );
+}
+
+function FormStepper({ current }) {
+  const steps = [
+    { n: 1, label: "Data resto" },
+    { n: 2, label: "Pilih kategori" },
+    { n: 3, label: "Jawab pertanyaan" },
+  ];
+
+  return (
+    <ol className="form-stepper" aria-label="Langkah pengisian">
+      {steps.map((step, index) => {
+        const status =
+          current > step.n ? "done" : current === step.n ? "current" : "todo";
+        return (
+          <li key={step.n} className={`form-step is-${status}`}>
+            <span className="form-step-index">{step.n}</span>
+            <span className="form-step-label">{step.label}</span>
+            {index < steps.length - 1 ? (
+              <span className="form-step-line" aria-hidden="true" />
+            ) : null}
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
 export default function HealthCheckForm() {
   const { message } = App.useApp();
   const [form] = Form.useForm();
+  const questionsRef = useRef(null);
 
   const [categories, setCategories] = useState([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [categoryUnlocked, setCategoryUnlocked] = useState(false);
 
   const [answers, setAnswers] = useState({});
   const [latestResult, setLatestResult] = useState(null);
@@ -117,6 +164,15 @@ export default function HealthCheckForm() {
   const [reanalyzing, setReanalyzing] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
+  const restoName = Form.useWatch("restoName", form);
+  const ownerName = Form.useWatch("ownerName", form);
+  const whatsapp = Form.useWatch("whatsapp", form);
+  const identityReady = isIdentityReady(restoName, ownerName, whatsapp);
+
+  useEffect(() => {
+    if (identityReady) setCategoryUnlocked(true);
+  }, [identityReady]);
+
   const answerType = selectedCategory?.answer_type || "yes_no";
   const totalQuestions = questions.length;
   const answeredCount = useMemo(
@@ -125,6 +181,12 @@ export default function HealthCheckForm() {
   );
   const progressPercent =
     totalQuestions > 0 ? Math.round((answeredCount / totalQuestions) * 100) : 0;
+
+  const currentStep = selectedCategory
+    ? 3
+    : categoryUnlocked
+      ? 2
+      : 1;
 
   const loadCategories = useCallback(async () => {
     try {
@@ -146,7 +208,8 @@ export default function HealthCheckForm() {
     loadCategories();
   }, [loadCategories]);
 
-  const selectCategory = async (category) => {
+  const loadQuestions = async (category) => {
+    if (!category?.id) return;
     setQuestionsLoading(true);
     setAnswers({});
     setSelectedCategory(category);
@@ -157,22 +220,32 @@ export default function HealthCheckForm() {
         throw new Error(result.error || "Gagal memuat soal.");
       }
       setSelectedCategory(result.data.category);
-      setQuestions(Array.isArray(result.data.questions) ? result.data.questions : []);
+      setQuestions(
+        Array.isArray(result.data.questions) ? result.data.questions : [],
+      );
     } catch (error) {
       message.error(error.message || "Gagal memuat soal.");
       setSelectedCategory(null);
       setQuestions([]);
+      form.setFieldValue("categoryId", undefined);
     } finally {
       setQuestionsLoading(false);
     }
   };
 
-  const backToCategories = () => {
-    setSelectedCategory(null);
-    setQuestions([]);
-    setAnswers({});
-    form.resetFields();
+  const handleCategoryChange = (categoryId) => {
+    const category = categories.find((item) => item.id === categoryId);
+    if (!category) return;
+    if (Object.keys(answers).length > 0) {
+      message.info("Pertanyaan diganti sesuai kategori baru.");
+    }
+    loadQuestions(category);
   };
+
+  useEffect(() => {
+    if (!selectedCategory || questionsLoading || questions.length === 0) return;
+    questionsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [selectedCategory, questionsLoading, questions.length]);
 
   const setAnswer = (questionId, value) => {
     setAnswers((prev) => ({
@@ -184,6 +257,9 @@ export default function HealthCheckForm() {
   const clearForm = () => {
     form.resetFields();
     setAnswers({});
+    setSelectedCategory(null);
+    setQuestions([]);
+    setCategoryUnlocked(false);
   };
 
   const handleDownloadPdf = () => {
@@ -252,7 +328,7 @@ export default function HealthCheckForm() {
 
   const onFinish = async (values) => {
     if (!selectedCategory?.id) {
-      message.warning("Pilih kategori terlebih dahulu.");
+      message.warning("Pilih kategori analisis terlebih dahulu.");
       return;
     }
 
@@ -296,12 +372,12 @@ export default function HealthCheckForm() {
       setSubmitted(true);
 
       if (result.analyzed) {
-        message.success("Jawaban tersimpan dan analisis AI selesai.");
+        message.success("Jawaban tersimpan dan hasil analisis siap.");
       } else {
         message.warning(
           result.analyzeError
-            ? `Jawaban tersimpan, tetapi analisis AI gagal: ${result.analyzeError}`
-            : "Jawaban tersimpan, tetapi analisis AI belum tersedia.",
+            ? `Jawaban tersimpan, tetapi analisis gagal: ${result.analyzeError}`
+            : "Jawaban tersimpan, tetapi hasil analisis belum tersedia.",
         );
       }
     } catch (error) {
@@ -315,7 +391,7 @@ export default function HealthCheckForm() {
     setSubmitted(false);
     setLatestResult(null);
     setAnalyzeError("");
-    backToCategories();
+    clearForm();
   };
 
   if (submitted) {
@@ -332,7 +408,7 @@ export default function HealthCheckForm() {
             <WarningOutlined style={{ fontSize: 56, color: "#D83028" }} />
             <h3 className="success-title">Jawaban tersimpan</h3>
             <p className="success-text">
-              Analisis AI gagal diproses. Data resto{" "}
+              Hasil analisis belum berhasil diproses. Data resto{" "}
               <strong>{latestResult?.resto_name || "-"}</strong> sudah aman
               tersimpan — silakan coba analisis ulang.
             </p>
@@ -365,8 +441,8 @@ export default function HealthCheckForm() {
           <h3 className="success-title">Terima kasih!</h3>
           <p className="success-text">{QUESTIONNAIRE_FOOTER}</p>
           <p className="success-meta">
-            Analisis AI siap. Unduh PDF laporan untuk resto{" "}
-            <strong>{latestResult.resto_name}</strong>.
+            Hasil analisis untuk{" "}
+            <strong>{latestResult.resto_name}</strong> sudah siap diunduh.
           </p>
           {latestResult.analysis?.summary ? (
             <p className="analysis-preview">{latestResult.analysis.summary}</p>
@@ -394,67 +470,6 @@ export default function HealthCheckForm() {
     );
   }
 
-  if (!selectedCategory) {
-    return (
-      <Card className="health-check-card">
-        <div className="section-heading">
-          <FormOutlined style={{ fontSize: 22, color: "#D83028" }} />
-          <div>
-            <h2 className="section-title">Pilih kategori</h2>
-            <p className="section-desc">
-              Pilih fokus kuisioner yang ingin Anda isi. Setiap kategori punya
-              soal sendiri dengan tipe jawaban yang sama.
-            </p>
-          </div>
-        </div>
-
-        {categoriesLoading ? (
-          <div style={{ textAlign: "center", padding: "40px 0" }}>
-            <Spin size="large" />
-          </div>
-        ) : categories.length === 0 ? (
-          <p className="section-desc">
-            Belum ada kategori aktif. Silakan atur di mibebi-admin.
-          </p>
-        ) : (
-          <div className="category-grid">
-            {categories.map((category) => (
-              <button
-                key={category.id}
-                type="button"
-                className="category-pick-card"
-                onClick={() => selectCategory(category)}
-              >
-                <span className="category-pick-title">{category.title}</span>
-                {category.description ? (
-                  <span className="category-pick-desc">{category.description}</span>
-                ) : null}
-                <span className="category-pick-meta">
-                  {category.questions_count} soal ·{" "}
-                  {ANSWER_TYPE_LABELS[category.answer_type] ||
-                    category.answer_type}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </Card>
-    );
-  }
-
-  if (questionsLoading) {
-    return (
-      <Card className="health-check-card">
-        <div style={{ textAlign: "center", padding: "48px 0" }}>
-          <Spin size="large" />
-          <p className="section-desc" style={{ marginTop: 16 }}>
-            Memuat soal {selectedCategory.title}…
-          </p>
-        </div>
-      </Card>
-    );
-  }
-
   return (
     <Form
       form={form}
@@ -463,28 +478,16 @@ export default function HealthCheckForm() {
       onFinish={onFinish}
       scrollToFirstError
     >
-      <div className="category-toolbar">
-        <Button
-          type="link"
-          icon={<ArrowLeftOutlined />}
-          onClick={backToCategories}
-          style={{ paddingLeft: 0 }}
-        >
-          Ganti kategori
-        </Button>
-        <span className="category-toolbar-label">
-          {selectedCategory.title} ·{" "}
-          {ANSWER_TYPE_LABELS[answerType] || answerType}
-        </span>
-      </div>
+      <FormStepper current={currentStep} />
 
       <Card className="health-check-card identity-card">
         <div className="section-heading">
           <ShopOutlined style={{ fontSize: 22, color: "#D83028" }} />
           <div>
-            <h2 className="section-title">Data Resto</h2>
+            <h2 className="section-title">Data resto Anda</h2>
             <p className="section-desc">
-              Lengkapi identitas singkat sebelum mengisi kuisioner.
+              Isi identitas singkat dulu. Setelah itu baru pilih bagian bisnis
+              yang ingin dicek.
             </p>
           </div>
         </div>
@@ -496,7 +499,11 @@ export default function HealthCheckForm() {
               name="restoName"
               rules={[{ required: true, message: "Nama resto wajib diisi" }]}
             >
-              <Input placeholder="Contoh: Warung Makan Bahagia" size="large" />
+              <Input
+                placeholder="Contoh: Warung Makan Bahagia"
+                size="large"
+                autoComplete="organization"
+              />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
@@ -505,13 +512,18 @@ export default function HealthCheckForm() {
               name="ownerName"
               rules={[{ required: true, message: "Nama PIC wajib diisi" }]}
             >
-              <Input placeholder="Nama Anda" size="large" />
+              <Input
+                placeholder="Nama Anda"
+                size="large"
+                autoComplete="name"
+              />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
             <Form.Item
               label="WhatsApp"
               name="whatsapp"
+              extra="Dipakai tim Mibebi untuk follow-up hasil, bukan untuk spam."
               rules={[
                 { required: true, message: "Nomor WhatsApp wajib diisi" },
                 {
@@ -520,7 +532,12 @@ export default function HealthCheckForm() {
                 },
               ]}
             >
-              <Input placeholder="08xxxxxxxxxx" size="large" />
+              <Input
+                placeholder="08xxxxxxxxxx"
+                size="large"
+                inputMode="tel"
+                autoComplete="tel"
+              />
             </Form.Item>
           </Col>
           <Col xs={24} md={12}>
@@ -529,81 +546,156 @@ export default function HealthCheckForm() {
             </Form.Item>
           </Col>
         </Row>
-      </Card>
 
-      <Card className="health-check-card progress-card sticky-progress">
-        <div className="progress-row">
-          <div>
-            <p className="progress-label">
-              Progress: {answeredCount}/{totalQuestions} pertanyaan
-            </p>
-            <p className="progress-hint">
-              {answerType === "yes_no"
-                ? "Jawab YA atau TIDAK pada setiap pertanyaan"
-                : answerType === "scale_1_5"
-                  ? "Pilih skala 1–5 pada setiap pertanyaan"
-                  : "Isi jawaban teks pada setiap pertanyaan"}
-            </p>
-          </div>
-          <Progress
-            type="circle"
-            percent={progressPercent}
-            size={64}
-            strokeColor="#D83028"
-            format={(percent) => `${percent}%`}
-          />
-        </div>
-        <Progress
-          percent={progressPercent}
-          showInfo={false}
-          strokeColor="#D83028"
-          style={{ marginTop: 12, marginBottom: 0 }}
-        />
-      </Card>
-
-      <Card
-        className="health-check-card section-card"
-        title={
-          <Space>
-            <FormOutlined style={{ color: "#D83028" }} />
-            <span>{selectedCategory.title}</span>
-          </Space>
-        }
-      >
-        <div className="questions-stack">
-          {questions.map((question, index) => (
-            <div key={question.id} className="question-block">
-              <p className="question-text">
-                <span className="question-number">{index + 1}.</span>
-                {question.question_text}
-              </p>
-              <AnswerInput
-                answerType={answerType}
-                value={answers[question.id]}
-                onChange={(value) => setAnswer(question.id, value)}
+        {!categoryUnlocked ? (
+          <p className="identity-next-hint">
+            Lengkapi nama resto, nama PIC, dan WhatsApp untuk memilih kategori.
+          </p>
+        ) : (
+          <div className="category-select-block">
+            <Divider style={{ margin: "4px 0 20px" }} />
+            <Form.Item
+              label="Anda ingin menganalisis bagian mana?"
+              name="categoryId"
+              rules={[{ required: true, message: "Pilih kategori analisis" }]}
+              extra={
+                selectedCategory?.description ||
+                "Pilih satu fokus. Pertanyaan akan muncul sesuai kategori ini."
+              }
+            >
+              <Select
+                size="large"
+                placeholder="Pilih kategori, misalnya operasional atau penjualan"
+                loading={categoriesLoading}
+                disabled={submitting}
+                listHeight={320}
+                optionLabelProp="label"
+                onChange={handleCategoryChange}
+                options={categories.map((category) => ({
+                  value: category.id,
+                  label: category.title,
+                  description: category.description,
+                  questions_count: category.questions_count,
+                  answer_type: category.answer_type,
+                }))}
+                optionRender={(option) => (
+                  <div className="category-option">
+                    <span className="category-option-title">
+                      {option.data.label}
+                    </span>
+                    {option.data.description ? (
+                      <span className="category-option-desc">
+                        {option.data.description}
+                      </span>
+                    ) : null}
+                    <span className="category-option-meta">
+                      {option.data.questions_count} pertanyaan ·{" "}
+                      {ANSWER_TYPE_LABELS[option.data.answer_type] ||
+                        option.data.answer_type}
+                    </span>
+                  </div>
+                )}
+                notFoundContent={
+                  categoriesLoading ? (
+                    <Spin size="small" />
+                  ) : (
+                    "Belum ada kategori aktif. Silakan atur di mibebi-admin."
+                  )
+                }
               />
-              {index < questions.length - 1 ? (
-                <Divider style={{ margin: "16px 0 0" }} />
-              ) : null}
-            </div>
-          ))}
-        </div>
+            </Form.Item>
+          </div>
+        )}
       </Card>
 
-      <Card className="health-check-card submit-card">
-        <p className="submit-note">{QUESTIONNAIRE_FOOTER}</p>
-        <Button
-          type="primary"
-          htmlType="submit"
-          size="large"
-          loading={submitting}
-          block
-        >
-          {submitting
-            ? "Menyimpan & menganalisis..."
-            : "Kirim & analisis dengan AI"}
-        </Button>
-      </Card>
+      {categoryUnlocked && selectedCategory ? (
+        <div ref={questionsRef} className="questions-reveal">
+          {questionsLoading ? (
+            <Card className="health-check-card">
+              <div style={{ textAlign: "center", padding: "36px 0" }}>
+                <Spin size="large" />
+                <p className="section-desc" style={{ marginTop: 16 }}>
+                  Menyiapkan pertanyaan {selectedCategory.title}…
+                </p>
+              </div>
+            </Card>
+          ) : (
+            <>
+              <Card className="health-check-card progress-card sticky-progress">
+                <div className="progress-row">
+                  <div>
+                    <p className="progress-label">
+                      {answeredCount} dari {totalQuestions} pertanyaan terjawab
+                    </p>
+                    <p className="progress-hint">
+                      {selectedCategory.title}
+                      {" · "}
+                      {answerType === "yes_no"
+                        ? "Jawab Ya atau Tidak"
+                        : answerType === "scale_1_5"
+                          ? "Pilih 1 (kurang) sampai 5 (sangat baik)"
+                          : "Isi jawaban singkat sesuai kondisi resto"}
+                      {" · ± "}
+                      {estimateMinutes(totalQuestions)} menit
+                    </p>
+                  </div>
+                  <span className="progress-percent">{progressPercent}%</span>
+                </div>
+                <Progress
+                  percent={progressPercent}
+                  showInfo={false}
+                  strokeColor="#D83028"
+                  style={{ marginTop: 10, marginBottom: 0 }}
+                />
+              </Card>
+
+              <Card
+                className="health-check-card section-card"
+                title={
+                  <Space>
+                    <FormOutlined style={{ color: "#D83028" }} />
+                    <span>{selectedCategory.title}</span>
+                  </Space>
+                }
+              >
+                <div className="questions-stack">
+                  {questions.map((question, index) => (
+                    <div key={question.id} className="question-block">
+                      <p className="question-text">
+                        <span className="question-number">{index + 1}.</span>
+                        {question.question_text}
+                      </p>
+                      <AnswerInput
+                        answerType={answerType}
+                        value={answers[question.id]}
+                        onChange={(value) => setAnswer(question.id, value)}
+                      />
+                      {index < questions.length - 1 ? (
+                        <Divider style={{ margin: "16px 0 0" }} />
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+
+              <Card className="health-check-card submit-card">
+                <p className="submit-note">{QUESTIONNAIRE_FOOTER}</p>
+                <Button
+                  type="primary"
+                  htmlType="submit"
+                  size="large"
+                  loading={submitting}
+                  block
+                >
+                  {submitting
+                    ? "Menyimpan & menyiapkan hasil..."
+                    : "Kirim & lihat hasil analisis"}
+                </Button>
+              </Card>
+            </>
+          )}
+        </div>
+      ) : null}
     </Form>
   );
 }
